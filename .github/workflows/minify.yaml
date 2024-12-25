@@ -1,0 +1,85 @@
+name: R Package Size Optimization Workflow
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  package-optimization:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v3
+
+      - name: Parse package metadata from issue
+        id: parse-description
+        run: |
+          DESCRIPTION='${{ github.event.issue.body }}'
+          PACKAGE=$(echo "$DESCRIPTION" | jq -r '.package')
+          VERSION=$(echo "$DESCRIPTION" | jq -r '.version')
+          echo "PACKAGE=$PACKAGE" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Setup R runtime environment
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Query existing optimized package
+        id: check-artifact
+        run: |
+          ARTIFACT_INFO=$(gh api /repos/${{ github.repository }}/actions/artifacts --jq '.artifacts[] | select(.name=="${{ env.PACKAGE }}-${{ env.VERSION }}") | {id: .id, run_id: .workflow_run.id}')
+          ARTIFACT_ID=$(echo "$ARTIFACT_INFO" | jq -r '.id')
+          RUN_ID=$(echo "$ARTIFACT_INFO" | jq -r '.run_id')
+          echo "ARTIFACT_ID=$ARTIFACT_ID" >> $GITHUB_ENV
+          echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Retrieve cached optimized package
+        if: env.ARTIFACT_ID != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.PACKAGE }}-${{ env.VERSION }}
+          run-id: ${{ env.RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .
+
+      - name: Install cached optimized package
+        if: env.ARTIFACT_ID != ''
+        run: R CMD INSTALL ${{ env.PACKAGE }}_${{ env.VERSION }}_minified.tar.gz
+
+      - name: Generate and install optimized package
+        if: env.ARTIFACT_ID == ''
+        run: |
+          # Fetch Package & Run minification
+          .github/scripts/minify.sh
+
+          # Get original size
+          ORIG_SIZE=$(du -h ./${{ env.PACKAGE }}_${{ env.VERSION }}.tar.gz | cut -f1)
+          echo "ORIG_SIZE=$ORIG_SIZE" >> $GITHUB_ENV
+          
+          # Get minified size
+          MIN_SIZE=$(du -h ./${{ env.PACKAGE }}_${{ env.VERSION }}_minified.tar.gz | cut -f1)
+          echo "MIN_SIZE=$MIN_SIZE" >> $GITHUB_ENV
+
+      - name: Archive optimized package
+        if: env.ARTIFACT_ID == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE }}-${{ env.VERSION }}
+          path: ./${{ env.PACKAGE }}_${{ env.VERSION }}_minified.tar.gz
+          retention-days: 90
+
+      - name: Report optimization results
+        run: |
+          if [[ "${{ job.status }}" == "success" ]]; then
+            if [[ -n "${{ env.ORIG_SIZE }}" ]]; then
+              COMMENT="✅ Package successfully optimized!\nOriginal size: ${{ env.ORIG_SIZE }}\nOptimized size: ${{ env.MIN_SIZE }}"
+            else
+              COMMENT="✅ Package successfully installed from cache."
+            fi
+          else
+            COMMENT="❌ Package optimization failed. Please check workflow logs."
+          fi
+          gh issue comment "${{ github.event.issue.number }}" --body "$COMMENT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
