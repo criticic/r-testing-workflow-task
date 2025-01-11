@@ -8,9 +8,11 @@ jobs:
   package-optimization:
     runs-on: ubuntu-latest
     steps:
+      # Step 1: Checkout the repository
       - name: Checkout source code
         uses: actions/checkout@v3
 
+      # Step 2: Parse metadata from the issue description
       - name: Parse package metadata from issue
         id: parse-description
         run: |
@@ -20,9 +22,11 @@ jobs:
           echo "PACKAGE=$PACKAGE" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
+      # Step 3: Setup R runtime environment
       - name: Setup R runtime environment
         uses: r-lib/actions/setup-r@v2
 
+      # Step 4: Check if a cached artifact already exists
       - name: Query existing optimized package
         id: check-artifact
         run: |
@@ -34,6 +38,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Step 5: Retrieve and install the cached artifact if it exists
       - name: Retrieve cached optimized package
         if: env.ARTIFACT_ID != ''
         uses: actions/download-artifact@v4
@@ -47,20 +52,26 @@ jobs:
         if: env.ARTIFACT_ID != ''
         run: R CMD INSTALL ${{ env.PACKAGE }}_${{ env.VERSION }}_minified.tar.gz
 
+      # Step 6: Generate and install an optimized package if no cache exists
+      - name: Start timer
+        run: echo "START_TIME=$(date +%s)" >> $GITHUB_ENV
+
       - name: Generate and install optimized package
         if: env.ARTIFACT_ID == ''
         run: |
-          # Fetch Package & Run minification
+          # Fetch package and run minification
           .github/scripts/minify.sh
 
-          # Get original size
+          # Log original and minified sizes
           ORIG_SIZE=$(du -h ./${{ env.PACKAGE }}_${{ env.VERSION }}.tar.gz | cut -f1)
-          echo "ORIG_SIZE=$ORIG_SIZE" >> $GITHUB_ENV
-          
-          # Get minified size
           MIN_SIZE=$(du -h ./${{ env.PACKAGE }}_${{ env.VERSION }}_minified.tar.gz | cut -f1)
+          echo "ORIG_SIZE=$ORIG_SIZE" >> $GITHUB_ENV
           echo "MIN_SIZE=$MIN_SIZE" >> $GITHUB_ENV
 
+          # Install optimized package
+          R CMD INSTALL ./${{ env.PACKAGE }}_${{ env.VERSION }}_minified.tar.gz
+
+      # Step 7: Archive the newly optimized package
       - name: Archive optimized package
         if: env.ARTIFACT_ID == ''
         uses: actions/upload-artifact@v4
@@ -69,17 +80,31 @@ jobs:
           path: ./${{ env.PACKAGE }}_${{ env.VERSION }}_minified.tar.gz
           retention-days: 90
 
+      - name: End timer and log duration
+        run: |
+          END_TIME=$(date +%s)
+          DURATION=$((END_TIME - START_TIME))
+          echo "Optimization process took $DURATION seconds." >> timing.log
+          DISK_SPACE=$(du -sh ./${{ env.PACKAGE }}_${{ env.VERSION }}_minified.tar.gz | cut -f1)
+          echo "Disk space used: $DISK_SPACE" >> disk_space.log
+
+      # Step 8: Log optimization results
       - name: Report optimization results
         run: |
-          if [[ "${{ job.status }}" == "success" ]]; then
-            if [[ -n "${{ env.ORIG_SIZE }}" ]]; then
-              COMMENT="✅ Package successfully optimized!\nOriginal size: ${{ env.ORIG_SIZE }}\nOptimized size: ${{ env.MIN_SIZE }}"
-            else
-              COMMENT="✅ Package successfully installed from cache."
-            fi
+          if [[ -n "$ORIG_SIZE" ]]; then
+            COMMENT="✅ Package optimized successfully!\nOriginal size: $ORIG_SIZE\nOptimized size: $MIN_SIZE\nTime taken: $DURATION seconds\nDisk space used: $DISK_SPACE"
           else
-            COMMENT="❌ Package optimization failed. Please check workflow logs."
+            COMMENT="✅ Package installed from cache."
           fi
-          gh issue comment "${{ github.event.issue.number }}" --body "$COMMENT"
+          gh issue comment ${{ github.event.issue.number }} --body "$COMMENT"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Simulate CI runs and observe caching
+        run: |
+          echo "Simulating CI run for caching demonstration..."
+          if [ -n "${{ env.ARTIFACT_ID }}" ]; then
+            echo "Cache hit for ${{ env.PACKAGE }}_${{ env.VERSION }}."
+          else
+            echo "Cache miss for ${{ env.PACKAGE }}_${{ env.VERSION }}."
+          fi
