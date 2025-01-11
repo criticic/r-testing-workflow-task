@@ -12,7 +12,7 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v3
 
-      # Step 2: Parse metadata from the issue description
+      # Step 2: Parse package metadata from issue
       - name: Parse package metadata from issue
         id: parse-description
         run: |
@@ -84,9 +84,9 @@ jobs:
         run: |
           END_TIME=$(date +%s)
           DURATION=$((END_TIME - START_TIME))
-          echo "Optimization process took $DURATION seconds." >> timing.log
+          echo "DURATION=$DURATION" >> $GITHUB_ENV
           DISK_SPACE=$(du -sh ./${{ env.PACKAGE }}_${{ env.VERSION }}_minified.tar.gz | cut -f1)
-          echo "Disk space used: $DISK_SPACE" >> disk_space.log
+          echo "DISK_SPACE=$DISK_SPACE" >> $GITHUB_ENV
 
       # Step 8: Log optimization results
       - name: Report optimization results
