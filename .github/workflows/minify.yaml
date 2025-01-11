@@ -92,7 +92,7 @@ jobs:
       - name: Report optimization results
         run: |
           if [[ -n "$ORIG_SIZE" ]]; then
-            COMMENT="✅ Package optimized successfully!\nOriginal size: $ORIG_SIZE\nOptimized size: $MIN_SIZE\nTime taken: $DURATION seconds\nDisk space used: $DISK_SPACE"
+            COMMENT="✅ Package optimized successfully!<br>Original size: $ORIG_SIZE<br>Optimized size: $MIN_SIZE<br>Time taken: $DURATION seconds<br>Disk space used: $DISK_SPACE"
           else
             COMMENT="✅ Package installed from cache."
           fi
