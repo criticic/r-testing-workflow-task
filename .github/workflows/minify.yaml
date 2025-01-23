@@ -63,8 +63,8 @@ jobs:
           .github/scripts/minify.sh
 
           # Log original and minified sizes
-          ORIG_SIZE=$(du -h ./${{ env.PACKAGE }}_${{ env.VERSION }}.tar.gz | cut -f1)
-          MIN_SIZE=$(du -h ./${{ env.PACKAGE }}_${{ env.VERSION }}_minified.tar.gz | cut -f1)
+          ORIG_SIZE=$(du -h ./${{ env.PACKAGE }}_${{ env.VERSION }}.tar.gz | cut -f1 | sed 's/M$/MB/; s/K$/KB/')
+          MIN_SIZE=$(du -h ./${{ env.PACKAGE }}_${{ env.VERSION }}_minified.tar.gz | cut -f1 | sed 's/M$/MB/; s/K$/KB/')
           echo "ORIG_SIZE=$ORIG_SIZE" >> $GITHUB_ENV
           echo "MIN_SIZE=$MIN_SIZE" >> $GITHUB_ENV
 
@@ -92,9 +92,9 @@ jobs:
       - name: Report optimization results
         run: |
           if [[ -n "$ORIG_SIZE" ]]; then
-            COMMENT="✅ Package optimized successfully!<br>Original size: $ORIG_SIZE<br>Optimized size: $MIN_SIZE<br>Time taken: $DURATION seconds<br>Disk space used: $DISK_SPACE"
+            COMMENT="[SUCCESS] Package optimized successfully!<br>Original size: $ORIG_SIZE<br>Optimized size: $MIN_SIZE<br>Time taken: $DURATION seconds<br>Disk space used: $DISK_SPACE"
           else
-            COMMENT="✅ Package installed from cache."
+            COMMENT="[SUCCESS] Package installed from cache."
           fi
           gh issue comment ${{ github.event.issue.number }} --body "$COMMENT"
         env:
